@@ -1,0 +1,54 @@
+server:
+  port: 8080
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
+
+logging:
+  level:
+    org:
+      springframework: DEBUG
+
+spring:
+  application:
+    name: cloud-gateway-service
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+              - id: resource-service
+                uri: ${RESOURCE_SERVICE_URI:http://localhost:8083}
+                predicates:
+                - Path=/resources/**
+                filters:
+                  - name: CircuitBreaker
+                    args:
+                      name: resource-service-circuit-breaker
+                      fallbackUri: forward:/fallback/resource-service
+              - id: song-service
+                uri: ${SONG_SERVICE_URI:http://localhost:8081}
+                predicates:
+                  - Path=/songs/**
+                filters:
+                  - name: CircuitBreaker
+                    args:
+                      name: song-service-circuit-breaker
+                      fallbackUri: forward:/fallback/song-service
+
+resilience4j.circuitbreaker:
+  configs:
+    default:
+      registerHealthIndicator: true
+      slidingWindowSize: 50
+      failureRateThreshold: 50
+      waitDurationInOpenState: 10000
+  instances:
+    resource-service-circuit-breaker:
+      baseConfig: default
+    song-service-circuit-breaker:
+      baseConfig: default
