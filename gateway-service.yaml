@@ -7,48 +7,80 @@ eureka:
     fetch-registry: true
     service-url:
       defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
+metrics:
+  export:
+    prometheus:
+      enabled: true
+management:
+  endpoint:
+    prometheus:
+      enabled: true
 
 logging:
   level:
     org:
-      springframework: DEBUG
-
+      springframework:
+        web: DEBUG
+        http: DEBUG
+      cloud:
+        gateway: DEBUG
 spring:
   application:
     name: cloud-gateway-service
+  jmx:
+    enabled: true
   cloud:
     gateway:
       server:
         webflux:
+          httpclient:
+            response-timeout: 10s
           routes:
-              - id: resource-service
-                uri: ${RESOURCE_SERVICE_URI:http://localhost:8083}
-                predicates:
+            - id: resource-service
+              uri: ${RESOURCE_SERVICE_URI:http://localhost:8083}
+              predicates:
                 - Path=/resources/**
-                filters:
-                  - name: CircuitBreaker
-                    args:
-                      name: resource-service-circuit-breaker
-                      fallbackUri: forward:/fallback/resource-service
-              - id: song-service
-                uri: ${SONG_SERVICE_URI:http://localhost:8081}
-                predicates:
-                  - Path=/songs/**
-                filters:
-                  - name: CircuitBreaker
-                    args:
-                      name: song-service-circuit-breaker
-                      fallbackUri: forward:/fallback/song-service
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: resource-service-circuit-breaker
+                    fallbackUri: forward:/fallback/resource-service
+            - id: song-service
+              uri: ${SONG_SERVICE_URI:http://localhost:8081}
+              predicates:
+                - Path=/songs/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: song-service-circuit-breaker
+                    fallbackUri: forward:/fallback/song-service
+            - id: storage-service
+              uri: ${STORAGE_SERVICE_URI:http://localhost:8087}
+              predicates:
+                - Path=/storages/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: storage-service-circuit-breaker
+                    fallbackUri: forward:/fallback/storage-service
 
-resilience4j.circuitbreaker:
-  configs:
-    default:
-      registerHealthIndicator: true
-      slidingWindowSize: 50
-      failureRateThreshold: 50
-      waitDurationInOpenState: 10000
-  instances:
-    resource-service-circuit-breaker:
-      baseConfig: default
-    song-service-circuit-breaker:
-      baseConfig: default
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 100           # Number of requests to evaluate
+        failureRateThreshold: 50         # Percentage of failure rate to trip the breaker (e.g., 50%)
+        waitDurationInOpenState: 30s     # How long to wait before transitioning to HALF_OPEN
+        permittedNumberOfCallsInHalfOpenState: 10
+        slidingWindowType: COUNT_BASED   # COUNT_BASED or TIME_BASED window
+        minimumNumberOfCalls: 10         # Minimum number of calls required in the window
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        slowCallDurationThreshold: 5s    # Define slow calls (optional)
+        slowCallRateThreshold: 50        # Percentage of slow calls to trip breaker (optional)
+    instances:
+      resource-service-circuit-breaker:
+        base-config: default
+        slidingWindowSize: 50          # Customize specifically for this route
+        failureRateThreshold: 40       # Failure rate threshold for resource-service
